@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -103,7 +104,9 @@ func parseFlags() config {
 			"  Imagen (imagen mode):\n"+
 			"    imagen-3.0-generate-002         — Imagen 3\n"+
 			"    imagen-3.0-fast-generate-001    — Imagen 3 Fast\n"+
-			"    imagen-4.0-generate-preview-05-20")
+			"    imagen-4.0-generate-001         — Imagen 4\n"+
+			"    imagen-4.0-fast-generate-001    — Imagen 4 Fast\n"+
+			"    imagen-4.0-ultra-generate-001   — Imagen 4 Ultra")
 
 	// ── Imagen-specific ───────────────────────────────────
 	flag.StringVar(&cfg.aspectRatio, "aspect-ratio", "4:5",
@@ -122,8 +125,8 @@ func parseFlags() config {
 		"(imagen) JPEG compression quality 0-100. -1 = default (only for image/jpeg)")
 	flag.BoolVar(&cfg.addWatermark, "add-watermark", false,
 		"(imagen) Add SynthID watermark to generated images")
-	flag.BoolVar(&cfg.enhancePrompt, "enhance-prompt", true,
-		"(imagen) Let model rewrite and improve your prompt")
+	flag.BoolVar(&cfg.enhancePrompt, "enhance-prompt", false,
+		"(imagen) Let model rewrite and improve your prompt (not supported on Gemini API backend)")
 	flag.StringVar(&cfg.personGeneration, "person-generation", "ALLOW_ALL",
 		"(imagen) Person generation policy: DONT_ALLOW | ALLOW_ADULT | ALLOW_ALL")
 	flag.StringVar(&cfg.safetyFilterLevel, "safety-filter-level", "BLOCK_NONE",
@@ -167,26 +170,8 @@ func parseFlags() config {
 		fmt.Fprintln(os.Stderr, "Usage:")
 		fmt.Fprintln(os.Stderr, "  imggen -prompt \"<text>\" [options]")
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Set your API key:  export GEMINI_API_KEY=your_key")
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "Examples:")
-		fmt.Fprintln(os.Stderr, "  # Nano Banana 2 (default) — text to image")
-		fmt.Fprintln(os.Stderr, `  imggen -prompt "A cyberpunk city at night"`)
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "  # Nano Banana Pro — complex instruction, best quality")
-		fmt.Fprintln(os.Stderr, `  imggen -model gemini-3-pro-image-preview -prompt "A poster with bold text 'LAUNCH DAY'"`)
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "  # Nano Banana — high-volume low-latency")
-		fmt.Fprintln(os.Stderr, `  imggen -model gemini-2.5-flash-image -prompt "A simple icon of a rocket"`)
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "  # Nano Banana 2 — image-to-image")
-		fmt.Fprintln(os.Stderr, `  imggen -prompt "Make it watercolor" -image ./photo.jpg`)
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "  # Nano Banana 2 — loosen safety settings")
-		fmt.Fprintln(os.Stderr, `  imggen -prompt "A dramatic battle scene" -safety-harassment BLOCK_NONE -safety-dangerous BLOCK_ONLY_HIGH`)
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "  # Imagen 3 — text to image (photorealistic)")
-		fmt.Fprintln(os.Stderr, `  imggen -mode imagen -prompt "A photorealistic wolf in a misty forest" -aspect-ratio 16:9`)
+		fmt.Fprintln(os.Stderr, "Set your API key:  $env:GEMINI_API_KEY = \"your_key\"  (PowerShell)")
+		fmt.Fprintln(os.Stderr, "                   export GEMINI_API_KEY=your_key      (bash)")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		flag.PrintDefaults()
@@ -289,7 +274,6 @@ func runImagen(ctx context.Context, client *genai.Client, cfg config) error {
 		NegativePrompt:          cfg.negativePrompt,
 		OutputMIMEType:          cfg.outputMIMEType,
 		AddWatermark:            cfg.addWatermark,
-		EnhancePrompt:           cfg.enhancePrompt,
 		PersonGeneration:        genai.PersonGeneration(strings.ToUpper(cfg.personGeneration)),
 		SafetyFilterLevel:       genai.SafetyFilterLevel(strings.ToUpper(cfg.safetyFilterLevel)),
 		IncludeRAIReason:        cfg.includeRAIReason,
@@ -430,28 +414,48 @@ func runGemini(ctx context.Context, client *genai.Client, cfg config) error {
 		return fmt.Errorf("GenerateContent: %w", err)
 	}
 
+	// ── Always dump usage ──────────────────────────────────
+	if result.UsageMetadata != nil {
+		fmt.Printf("→ Tokens used : prompt=%d output=%d total=%d\n",
+			result.UsageMetadata.PromptTokenCount,
+			result.UsageMetadata.CandidatesTokenCount,
+			result.UsageMetadata.TotalTokenCount)
+	}
+
+	// ── Prompt-level block ────────────────────────────────
 	if result.PromptFeedback != nil && result.PromptFeedback.BlockReason != "" {
 		return fmt.Errorf("prompt blocked — reason: %s", result.PromptFeedback.BlockReason)
 	}
 
+	fmt.Printf("→ Candidates  : %d\n", len(result.Candidates))
+
 	imgIdx := 0
 	for ci, candidate := range result.Candidates {
+		fmt.Printf("→ Candidate %d : finish_reason=%s parts=%d\n",
+			ci+1, candidate.FinishReason, len(candidate.Content.Parts))
+
+		// Always print safety ratings
+		for _, r := range candidate.SafetyRatings {
+			fmt.Printf("     safety: %-45s prob=%-10s blocked=%v\n",
+				r.Category, r.Probability, r.Blocked)
+		}
+
 		if candidate.FinishReason == "SAFETY" {
 			fmt.Printf("⚠  Candidate %d blocked (SAFETY)\n", ci+1)
-			for _, r := range candidate.SafetyRatings {
-				fmt.Printf("     %s: %s\n", r.Category, r.Probability)
-			}
 			continue
 		}
-		for _, part := range candidate.Content.Parts {
-			if part.Text != "" && cfg.verbose {
-				fmt.Printf("[model text] %s\n", part.Text)
+
+		for pi, part := range candidate.Content.Parts {
+			if part.Text != "" {
+				// Always print model text (not just in verbose mode) so we can see refusals
+				fmt.Printf("   part[%d] text (%d chars): %s\n", pi, len(part.Text), part.Text)
 			}
 			if part.InlineData != nil {
 				mtype := part.InlineData.MIMEType
 				if mtype == "" {
 					mtype = "image/png"
 				}
+				fmt.Printf("   part[%d] image: mime=%s raw_bytes=%d\n", pi, mtype, len(part.InlineData.Data))
 				ext := mimeToExt(mtype)
 				imgBytes := rawImageBytes(part.InlineData.Data)
 				path, err := saveImage(cfg.outputDir, cfg.outputName, imgIdx, ext, imgBytes)
@@ -461,11 +465,19 @@ func runGemini(ctx context.Context, client *genai.Client, cfg config) error {
 				fmt.Printf("✓ Saved → %s (%d bytes, %s)\n", path, len(imgBytes), mtype)
 				imgIdx++
 			}
+			if part.Text == "" && part.InlineData == nil {
+				// Dump the raw part so we can see what the model sent
+				raw, _ := json.Marshal(part)
+				fmt.Printf("   part[%d] unknown: %s\n", pi, string(raw))
+			}
 		}
 	}
 
 	if imgIdx == 0 {
-		return fmt.Errorf("no images returned — check your prompt or safety settings")
+		// Print the full raw response for diagnosis
+		raw, _ := json.MarshalIndent(result, "", "  ")
+		fmt.Printf("\n── Full response dump ──\n%s\n── End dump ──\n", string(raw))
+		return fmt.Errorf("no images returned — see dump above")
 	}
 	return nil
 }
