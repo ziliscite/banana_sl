@@ -17,6 +17,16 @@ import (
 )
 
 // ─────────────────────────────────────────────
+// Nano Banana model aliases
+// ─────────────────────────────────────────────
+//
+// Nano Banana 2   → gemini-3.1-flash-image-preview  (default)
+// Nano Banana Pro → gemini-3-pro-image-preview
+// Nano Banana     → gemini-2.5-flash-image
+//
+// Imagen models are also supported via -mode imagen.
+
+// ─────────────────────────────────────────────
 // CLI flags
 // ─────────────────────────────────────────────
 
@@ -29,25 +39,25 @@ type config struct {
 	outputDir  string
 	outputName string
 
-	// Model selection
-	// "imagen" mode  → client.Models.GenerateImages  (imagen-3.0-generate-002 etc.)
-	// "gemini" mode  → client.Models.GenerateContent (gemini-2.0-flash-preview-image-generation etc.)
+	// Mode & model
+	// "gemini" mode  → client.Models.GenerateContent (Nano Banana family)
+	// "imagen" mode  → client.Models.GenerateImages  (Imagen 3/4)
 	mode  string
 	model string
 
 	// ── imagen-specific ──────────────────────────────────
-	aspectRatio      string
-	numberOfImages   int
-	negativePrompt   string
-	guidanceScale    float64
-	seed             int64
-	outputMIMEType   string
-	outputQuality    int
-	addWatermark     bool
-	enhancePrompt    bool
-	personGeneration string
-	safetyFilterLevel string
-	includeRAIReason bool
+	aspectRatio        string
+	numberOfImages     int
+	negativePrompt     string
+	guidanceScale      float64
+	seed               int64
+	outputMIMEType     string
+	outputQuality      int
+	addWatermark       bool
+	enhancePrompt      bool
+	personGeneration   string
+	safetyFilterLevel  string
+	includeRAIReason   bool
 	includeSafetyAttrs bool
 
 	// ── gemini GenerateContent generation config ─────────
@@ -80,10 +90,20 @@ func parseFlags() config {
 	flag.StringVar(&cfg.outputName, "out-name", "", "Base filename (no extension). Default: generated_<timestamp>")
 
 	// ── Mode & model ──────────────────────────────────────
-	flag.StringVar(&cfg.mode, "mode", "imagen",
-		"API mode: \"imagen\" (GenerateImages, supports aspect-ratio/seed/watermark) | \"gemini\" (GenerateContent with image modality)")
-	flag.StringVar(&cfg.model, "model", "imagen-3.0-generate-002",
-		"Model ID.\n  imagen mode:  imagen-3.0-generate-002 | imagen-3.0-fast-generate-001 | imagen-4.0-generate-preview-05-20\n  gemini mode:  gemini-2.0-flash-preview-image-generation | gemini-2.5-flash-preview-05-20")
+	flag.StringVar(&cfg.mode, "mode", "gemini",
+		"API mode:\n"+
+			"  \"gemini\" (default) — GenerateContent; supports Nano Banana family + image-to-image\n"+
+			"  \"imagen\"            — GenerateImages; supports aspect-ratio, seed, watermark")
+	flag.StringVar(&cfg.model, "model", "gemini-3.1-flash-image-preview",
+		"Model ID.\n"+
+			"  Nano Banana family (gemini mode):\n"+
+			"    gemini-3.1-flash-image-preview  — Nano Banana 2 (default): fast, high-volume\n"+
+			"    gemini-3-pro-image-preview      — Nano Banana Pro: best quality, text rendering\n"+
+			"    gemini-2.5-flash-image          — Nano Banana: speed/efficiency optimised\n"+
+			"  Imagen (imagen mode):\n"+
+			"    imagen-3.0-generate-002         — Imagen 3\n"+
+			"    imagen-3.0-fast-generate-001    — Imagen 3 Fast\n"+
+			"    imagen-4.0-generate-preview-05-20")
 
 	// ── Imagen-specific ───────────────────────────────────
 	flag.StringVar(&cfg.aspectRatio, "aspect-ratio", "1:1",
@@ -138,28 +158,35 @@ func parseFlags() config {
 	flag.BoolVar(&cfg.verbose, "verbose", false, "Print extra model text responses to stdout")
 
 	flag.Usage = func() {
-		fmt.Fprintln(os.Stderr, "Nano Banana 2 Image Generator — powered by Google Gemini / Imagen")
+		fmt.Fprintln(os.Stderr, "Nano Banana Image Generator — powered by Google Gemini / Imagen")
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "  Nano Banana 2   (default) → gemini-3.1-flash-image-preview")
+		fmt.Fprintln(os.Stderr, "  Nano Banana Pro           → gemini-3-pro-image-preview")
+		fmt.Fprintln(os.Stderr, "  Nano Banana               → gemini-2.5-flash-image")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Usage:")
-		fmt.Fprintln(os.Stderr, "  gemini-imggen -prompt \"<text>\" [options]")
+		fmt.Fprintln(os.Stderr, "  imggen -prompt \"<text>\" [options]")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Set your API key:  export GEMINI_API_KEY=your_key")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Examples:")
-		fmt.Fprintln(os.Stderr, "  # Imagen 3 text-to-image (default)")
-		fmt.Fprintln(os.Stderr, `  gemini-imggen -prompt "A cyberpunk city at night" -aspect-ratio 16:9 -num-images 2`)
+		fmt.Fprintln(os.Stderr, "  # Nano Banana 2 (default) — text to image")
+		fmt.Fprintln(os.Stderr, `  imggen -prompt "A cyberpunk city at night"`)
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "  # Imagen 4 with seed + no watermark + JPEG output")
-		fmt.Fprintln(os.Stderr, `  gemini-imggen -model imagen-4.0-generate-preview-05-20 -prompt "Neon Tokyo street" \`)
-		fmt.Fprintln(os.Stderr, `    -seed 42 -output-mime image/jpeg -output-quality 90 -add-watermark=false`)
+		fmt.Fprintln(os.Stderr, "  # Nano Banana Pro — complex instruction, best quality")
+		fmt.Fprintln(os.Stderr, `  imggen -model gemini-3-pro-image-preview -prompt "A poster with bold text 'LAUNCH DAY'"`)
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "  # Gemini image generation (image modality)")
-		fmt.Fprintln(os.Stderr, `  gemini-imggen -mode gemini -model gemini-2.0-flash-preview-image-generation \`)
-		fmt.Fprintln(os.Stderr, `    -prompt "Draw a cartoon cat" -temperature 0.9`)
+		fmt.Fprintln(os.Stderr, "  # Nano Banana — high-volume low-latency")
+		fmt.Fprintln(os.Stderr, `  imggen -model gemini-2.5-flash-image -prompt "A simple icon of a rocket"`)
 		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "  # Gemini image-to-image with safety overrides")
-		fmt.Fprintln(os.Stderr, `  gemini-imggen -mode gemini -prompt "Make it look like watercolor" -image ./cat.png \`)
-		fmt.Fprintln(os.Stderr, `    -safety-harassment BLOCK_NONE -safety-dangerous OFF`)
+		fmt.Fprintln(os.Stderr, "  # Nano Banana 2 — image-to-image")
+		fmt.Fprintln(os.Stderr, `  imggen -prompt "Make it watercolor" -image ./photo.jpg`)
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "  # Nano Banana 2 — loosen safety settings")
+		fmt.Fprintln(os.Stderr, `  imggen -prompt "A dramatic battle scene" -safety-harassment BLOCK_NONE -safety-dangerous BLOCK_ONLY_HIGH`)
+		fmt.Fprintln(os.Stderr, "")
+		fmt.Fprintln(os.Stderr, "  # Imagen 3 — text to image (photorealistic)")
+		fmt.Fprintln(os.Stderr, `  imggen -mode imagen -prompt "A photorealistic wolf in a misty forest" -aspect-ratio 16:9`)
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "Flags:")
 		flag.PrintDefaults()
@@ -199,8 +226,8 @@ func detectMIMEType(path string) string {
 	return http.DetectContentType(buf[:n])
 }
 
-func mimeToExt(mime string) string {
-	switch strings.Split(mime, ";")[0] {
+func mimeToExt(mimeType string) string {
+	switch strings.Split(mimeType, ";")[0] {
 	case "image/jpeg":
 		return ".jpg"
 	case "image/webp":
@@ -474,6 +501,6 @@ func main() {
 			log.Fatal(err)
 		}
 	default:
-		log.Fatalf("unknown mode %q — use \"imagen\" or \"gemini\"", cfg.mode)
+		log.Fatalf("unknown mode %q — use \"gemini\" or \"imagen\"", cfg.mode)
 	}
 }

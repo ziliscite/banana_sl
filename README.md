@@ -1,7 +1,20 @@
-# gemini-imggen
+# banana_sl
 
-A CLI tool to generate images using **Google Gemini / Imagen** (Nano Banana 2) from a text prompt,
-or optionally from an input image + prompt (image-to-image).
+A CLI tool to generate images using the **Nano Banana** family of Gemini models (or Imagen), from a text prompt or an input image + prompt (image-to-image).
+
+All generated images include a [SynthID watermark](https://ai.responsible.google/docs/safeguards/synthid).
+
+---
+
+## Nano Banana Model Family
+
+| Alias | Model ID | Description |
+|-------|----------|-------------|
+| **Nano Banana 2** *(default)* | `gemini-3.1-flash-image-preview` | High-efficiency, optimised for speed and high-volume developer use cases |
+| **Nano Banana Pro** | `gemini-3-pro-image-preview` | Professional asset production; advanced reasoning ("Thinking") for complex instructions and high-fidelity text rendering |
+| **Nano Banana** | `gemini-2.5-flash-image` | Speed and efficiency, optimised for high-volume, low-latency tasks |
+
+Imagen 3 / 4 models are also supported via `-mode imagen`.
 
 ---
 
@@ -13,8 +26,11 @@ or optionally from an input image + prompt (image-to-image).
 ## Setup
 
 ```bash
+git clone https://github.com/ziliscite/banana_sl
+cd banana_sl
+go mod tidy        # generates go.sum
+go build -o imggen .
 export GEMINI_API_KEY=your_api_key_here
-go build -o gemini-imggen .
 ```
 
 ---
@@ -22,7 +38,7 @@ go build -o gemini-imggen .
 ## Usage
 
 ```
-gemini-imggen -prompt "<text>" [options]
+imggen -prompt "<text>" [options]
 ```
 
 ---
@@ -31,8 +47,8 @@ gemini-imggen -prompt "<text>" [options]
 
 | Mode | Flag | API call | Best for |
 |------|------|----------|---------|
-| `imagen` (default) | `-mode imagen` | `GenerateImages` | High-quality photorealistic images; full aspect-ratio, seed, watermark control |
-| `gemini` | `-mode gemini` | `GenerateContent` | Conversational image generation; image-to-image editing |
+| `gemini` **(default)** | `-mode gemini` | `GenerateContent` | Nano Banana family; image-to-image editing; per-category safety tuning |
+| `imagen` | `-mode imagen` | `GenerateImages` | Photorealistic images; full aspect-ratio, seed, watermark control |
 
 ---
 
@@ -43,7 +59,7 @@ gemini-imggen -prompt "<text>" [options]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `-prompt` | **required** | Text prompt |
-| `-image` | — | Path to input image (gemini mode: image-to-image; imagen mode: not used) |
+| `-image` | — | Path to input image (image-to-image / editing mode) |
 | `-out-dir` | `.` | Output directory |
 | `-out-name` | `generated_<timestamp>` | Base filename (no extension) |
 
@@ -51,41 +67,14 @@ gemini-imggen -prompt "<text>" [options]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-mode` | `imagen` | `imagen` or `gemini` |
-| `-model` | `imagen-3.0-generate-002` | Model ID |
-
-**Imagen models:**
-- `imagen-3.0-generate-002` — Imagen 3 (Nano Banana 2), high quality
-- `imagen-3.0-fast-generate-001` — Imagen 3 Fast, lower latency
-- `imagen-4.0-generate-preview-05-20` — Imagen 4 preview
-
-**Gemini models:**
-- `gemini-2.0-flash-preview-image-generation`
-- `gemini-2.5-flash-preview-05-20`
+| `-mode` | `gemini` | `gemini` or `imagen` |
+| `-model` | `gemini-3.1-flash-image-preview` | Model ID (see table above) |
 
 ---
 
-### Imagen-specific Flags
+### Gemini / Nano Banana Flags
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-aspect-ratio` | `1:1` | `1:1` \| `3:4` \| `4:3` \| `9:16` \| `16:9` |
-| `-num-images` | `1` | Number of images to generate (1–4) |
-| `-negative-prompt` | — | What to discourage in the image |
-| `-guidance-scale` | model default | Prompt adherence (higher = more literal) |
-| `-seed` | random | Fixed seed for reproducibility (incompatible with `-add-watermark`) |
-| `-output-mime` | `image/png` | `image/png` \| `image/jpeg` \| `image/webp` |
-| `-output-quality` | model default | JPEG compression quality 0–100 |
-| `-add-watermark` | `false` | Add SynthID invisible watermark |
-| `-enhance-prompt` | `true` | Let model rewrite/improve your prompt |
-| `-person-generation` | `ALLOW_ADULT` | `DONT_ALLOW` \| `ALLOW_ADULT` \| `ALLOW_ALL` |
-| `-safety-filter-level` | `BLOCK_MEDIUM_AND_ABOVE` | `BLOCK_LOW_AND_ABOVE` \| `BLOCK_MEDIUM_AND_ABOVE` \| `BLOCK_ONLY_HIGH` \| `BLOCK_NONE` |
-| `-include-rai-reason` | `false` | Include RAI reason when image is filtered |
-| `-include-safety-attrs` | `false` | Include safety attribute scores in output |
-
----
-
-### Gemini GenerateContent Flags
+#### Generation Config
 
 | Flag | Default | Description |
 |------|---------|-------------|
@@ -93,10 +82,10 @@ gemini-imggen -prompt "<text>" [options]
 | `-top-p` | model default | Top-P nucleus sampling 0.0–1.0 |
 | `-top-k` | model default | Top-K sampling |
 | `-max-output-tokens` | model default | Max tokens in response |
-| `-gc-seed` | random | Fixed seed for GenerateContent |
+| `-gc-seed` | random | Fixed seed for reproducibility |
 | `-verbose` | `false` | Print model text responses alongside images |
 
-### Gemini Per-Category Safety Settings
+#### Per-Category Safety Settings
 
 Each flag accepts: `OFF` \| `BLOCK_NONE` \| `BLOCK_ONLY_HIGH` \| `BLOCK_MEDIUM_AND_ABOVE` \| `BLOCK_LOW_AND_ABOVE`
 
@@ -109,59 +98,80 @@ Each flag accepts: `OFF` \| `BLOCK_NONE` \| `BLOCK_ONLY_HIGH` \| `BLOCK_MEDIUM_A
 
 ---
 
+### Imagen-specific Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-aspect-ratio` | `1:1` | `1:1` \| `3:4` \| `4:3` \| `9:16` \| `16:9` |
+| `-num-images` | `1` | Number of images (1–4) |
+| `-negative-prompt` | — | What to discourage in the image |
+| `-guidance-scale` | model default | Prompt adherence (higher = more literal) |
+| `-seed` | random | Fixed seed (incompatible with `-add-watermark`) |
+| `-output-mime` | `image/png` | `image/png` \| `image/jpeg` \| `image/webp` |
+| `-output-quality` | model default | JPEG compression quality 0–100 |
+| `-add-watermark` | `false` | Add SynthID invisible watermark |
+| `-enhance-prompt` | `true` | Let model rewrite/improve your prompt |
+| `-person-generation` | `ALLOW_ADULT` | `DONT_ALLOW` \| `ALLOW_ADULT` \| `ALLOW_ALL` |
+| `-safety-filter-level` | `BLOCK_MEDIUM_AND_ABOVE` | `BLOCK_LOW_AND_ABOVE` \| `BLOCK_MEDIUM_AND_ABOVE` \| `BLOCK_ONLY_HIGH` \| `BLOCK_NONE` |
+| `-include-rai-reason` | `false` | Include RAI reason when image is filtered |
+| `-include-safety-attrs` | `false` | Include safety attribute scores in output |
+
+---
+
 ## Examples
 
 ```bash
-# Imagen 3 — basic text-to-image
-gemini-imggen -prompt "A photorealistic wolf standing in a misty forest at dawn"
+# Nano Banana 2 (default) — text to image
+imggen -prompt "A cyberpunk city at night"
 
-# Imagen 3 — landscape with seed, multiple images, no watermark
-gemini-imggen \
+# Nano Banana Pro — complex instruction with text rendering
+imggen \
+  -model gemini-3-pro-image-preview \
+  -prompt "A vintage travel poster for Tokyo with bold text VISIT TOKYO at the top"
+
+# Nano Banana — high-volume, low-latency
+imggen \
+  -model gemini-2.5-flash-image \
+  -prompt "A simple icon of a rocket ship"
+
+# Nano Banana 2 — image-to-image editing
+imggen \
+  -prompt "Transform this into a watercolor painting" \
+  -image ./my_photo.jpg \
+  -out-name watercolor_edit
+
+# Nano Banana 2 — custom safety settings
+imggen \
+  -prompt "A dramatic medieval battle scene" \
+  -safety-harassment BLOCK_NONE \
+  -safety-dangerous BLOCK_ONLY_HIGH \
+  -verbose
+
+# Nano Banana 2 — seed + temperature
+imggen \
+  -prompt "An astronaut floating above a neon planet" \
+  -gc-seed 42 \
+  -temperature 1.2 \
+  -out-dir ./output \
+  -out-name astronaut
+
+# Imagen 3 — photorealistic, landscape
+imggen \
+  -mode imagen \
+  -model imagen-3.0-generate-002 \
   -prompt "Aerial view of a volcanic island at sunset" \
   -aspect-ratio 16:9 \
-  -num-images 4 \
-  -seed 1337 \
-  -add-watermark=false \
-  -out-dir ./output \
-  -out-name volcano_island
+  -num-images 2 \
+  -out-dir ./output
 
-# Imagen 3 — JPEG output, tight safety filter
-gemini-imggen \
-  -prompt "Studio portrait of a professional" \
-  -output-mime image/jpeg \
-  -output-quality 95 \
-  -person-generation ALLOW_ALL \
-  -safety-filter-level BLOCK_ONLY_HIGH
-
-# Imagen 4 preview
-gemini-imggen \
+# Imagen 4 preview — JPEG output, seed
+imggen \
+  -mode imagen \
   -model imagen-4.0-generate-preview-05-20 \
   -prompt "Hyperdetailed macro photo of a dewdrop on a spider web" \
-  -aspect-ratio 3:4
-
-# Gemini image generation mode
-gemini-imggen \
-  -mode gemini \
-  -model gemini-2.0-flash-preview-image-generation \
-  -prompt "Draw a cartoon cat riding a skateboard" \
-  -temperature 1.0
-
-# Gemini image-to-image
-gemini-imggen \
-  -mode gemini \
-  -model gemini-2.0-flash-preview-image-generation \
-  -prompt "Transform this into a cyberpunk illustration with neon colors" \
-  -image ./my_photo.jpg \
-  -out-name cyberpunk_edit
-
-# Gemini with all safety settings loosened
-gemini-imggen \
-  -mode gemini \
-  -prompt "A dramatic battle scene" \
-  -safety-harassment BLOCK_NONE \
-  -safety-hate-speech BLOCK_NONE \
-  -safety-sexually-explicit BLOCK_ONLY_HIGH \
-  -safety-dangerous BLOCK_ONLY_HIGH
+  -seed 1337 \
+  -output-mime image/jpeg \
+  -output-quality 95
 ```
 
 ---
@@ -169,15 +179,19 @@ gemini-imggen \
 ## Project Structure
 
 ```
-gemini-imggen/
-├── main.go       # Single-file CLI application
+banana_sl/
+├── main.go     # Single-file CLI application
 ├── go.mod
-├── go.sum
+├── go.sum      # generated by: go mod tidy
 └── README.md
 ```
 
 ## References
 
 - [Gemini Image Generation docs](https://ai.google.dev/gemini-api/docs/image-generation)
+- [Gemini 3.1 Flash Image Preview](https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-image-preview)
+- [Gemini 3 Pro Image Preview](https://ai.google.dev/gemini-api/docs/models/gemini-3-pro-image-preview)
+- [Gemini 2.5 Flash Image](https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash-image)
 - [Safety Settings docs](https://ai.google.dev/gemini-api/docs/safety-settings)
+- [SynthID Watermark](https://ai.responsible.google/docs/safeguards/synthid)
 - [Google AI Go SDK](https://github.com/googleapis/go-genai)
