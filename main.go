@@ -106,7 +106,7 @@ func parseFlags() config {
 			"    imagen-4.0-generate-preview-05-20")
 
 	// ── Imagen-specific ───────────────────────────────────
-	flag.StringVar(&cfg.aspectRatio, "aspect-ratio", "1:1",
+	flag.StringVar(&cfg.aspectRatio, "aspect-ratio", "4:5",
 		"(imagen) Aspect ratio: 1:1 | 3:4 | 4:3 | 9:16 | 16:9")
 	flag.IntVar(&cfg.numberOfImages, "num-images", 1,
 		"(imagen) Number of images to generate (1-4)")
@@ -124,19 +124,19 @@ func parseFlags() config {
 		"(imagen) Add SynthID watermark to generated images")
 	flag.BoolVar(&cfg.enhancePrompt, "enhance-prompt", true,
 		"(imagen) Let model rewrite and improve your prompt")
-	flag.StringVar(&cfg.personGeneration, "person-generation", "ALLOW_ADULT",
+	flag.StringVar(&cfg.personGeneration, "person-generation", "ALLOW_ALL",
 		"(imagen) Person generation policy: DONT_ALLOW | ALLOW_ADULT | ALLOW_ALL")
-	flag.StringVar(&cfg.safetyFilterLevel, "safety-filter-level", "BLOCK_MEDIUM_AND_ABOVE",
+	flag.StringVar(&cfg.safetyFilterLevel, "safety-filter-level", "BLOCK_NONE",
 		"(imagen) Global safety filter level: BLOCK_LOW_AND_ABOVE | BLOCK_MEDIUM_AND_ABOVE | BLOCK_ONLY_HIGH | BLOCK_NONE")
-	flag.BoolVar(&cfg.includeRAIReason, "include-rai-reason", false,
+	flag.BoolVar(&cfg.includeRAIReason, "include-rai-reason", true,
 		"(imagen) Include RAI filter reason when an image is filtered")
-	flag.BoolVar(&cfg.includeSafetyAttrs, "include-safety-attrs", false,
+	flag.BoolVar(&cfg.includeSafetyAttrs, "include-safety-attrs", true,
 		"(imagen) Include safety attribute scores in response")
 
 	// ── Gemini GenerateContent tuning ─────────────────────
-	flag.Float64Var(&cfg.temperature, "temperature", -1,
+	flag.Float64Var(&cfg.temperature, "temperature", 1,
 		"(gemini) Sampling temperature 0.0-2.0. -1 = model default")
-	flag.Float64Var(&cfg.topP, "top-p", -1,
+	flag.Float64Var(&cfg.topP, "top-p", 0.95,
 		"(gemini) Top-P nucleus sampling 0.0-1.0. -1 = model default")
 	flag.Float64Var(&cfg.topK, "top-k", -1,
 		"(gemini) Top-K sampling. -1 = model default")
@@ -146,13 +146,13 @@ func parseFlags() config {
 		"(gemini) Random seed for GenerateContent. -1 = random")
 
 	// ── Gemini safety settings (per-category) ─────────────
-	flag.StringVar(&cfg.safetyHarassment, "safety-harassment", "",
+	flag.StringVar(&cfg.safetyHarassment, "safety-harassment", "BLOCK_NONE",
 		"(gemini) Harassment threshold: OFF | BLOCK_NONE | BLOCK_ONLY_HIGH | BLOCK_MEDIUM_AND_ABOVE | BLOCK_LOW_AND_ABOVE")
-	flag.StringVar(&cfg.safetyHateSpeech, "safety-hate-speech", "",
+	flag.StringVar(&cfg.safetyHateSpeech, "safety-hate-speech", "BLOCK_NONE",
 		"(gemini) Hate-speech threshold (same values)")
-	flag.StringVar(&cfg.safetySexuallyExplicit, "safety-sexually-explicit", "",
+	flag.StringVar(&cfg.safetySexuallyExplicit, "safety-sexually-explicit", "BLOCK_NONE",
 		"(gemini) Sexually-explicit threshold (same values)")
-	flag.StringVar(&cfg.safetyDangerous, "safety-dangerous", "",
+	flag.StringVar(&cfg.safetyDangerous, "safety-dangerous", "BLOCK_NONE",
 		"(gemini) Dangerous-content threshold (same values)")
 
 	flag.BoolVar(&cfg.verbose, "verbose", false, "Print extra model text responses to stdout")
@@ -296,7 +296,7 @@ func runImagen(ctx context.Context, client *genai.Client, cfg config) error {
 		IncludeSafetyAttributes: cfg.includeSafetyAttrs,
 	}
 	if cfg.seed >= 0 {
-		v := int64(cfg.seed)
+		v := int32(cfg.seed)
 		icfg.Seed = &v
 	}
 	if cfg.guidanceScale >= 0 {
